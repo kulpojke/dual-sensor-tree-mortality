@@ -1,4 +1,10 @@
+#TODO:
+#   Next:
+#       unigueID is now made by R. Remove function to create it,
+#       and use it as the key from get-go.
+
 #/bin/python3
+
 import argparse
 from contextlib import redirect_stdout, redirect_stderr
 import json
@@ -241,7 +247,14 @@ def make_model_inputs(crowns, tif_path, tile, label=None, IDcolumn=None):
     return pd.DataFrame(data, columns=cols)
 
 
-def ll_features(gpkg, tif_path, label=None, IDcolumn=None, label_col='label'):
+def ll_features(
+    gpkg,
+    tif_path,
+    label=None,
+    IDcolumn=None,
+    label_col='label',
+    id_col='uniqueID'
+    ):
     '''
     Wrapper for reading crowns and engineering model features
     for use with joblib Parallel.
@@ -253,7 +266,7 @@ def ll_features(gpkg, tif_path, label=None, IDcolumn=None, label_col='label'):
     # read the crown polygons
     crowns = gpd.read_file(gpkg).dropna(
         subset=[label_col]
-        ).set_index('IDdalponte', drop=False)
+        ).set_index(id_col, drop=False)
     crowns = crowns[crowns.geometry.area > 10]
     
     # make uniqueID

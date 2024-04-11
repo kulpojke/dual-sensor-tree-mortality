@@ -3,7 +3,12 @@
 # parse args
 args = commandArgs(trailingOnly=TRUE)
 site_dir  <- args[1] 
-laz_dir   <- args[2] 
+laz_dir   <- args[2]
+cold_storage <- args[3]
+utm_zone <- args[4]
+
+print(paste('cold storage:', cold_storage))
+print(paste('utm zone:', utm_zone))
 
 # libraries
 library(plyr)
@@ -14,6 +19,57 @@ library(lidR)
 library(future)
 plan(multisession, workers=8)
 
+#---------------------------------------------------------------
+# functions for later
+# rounds to even number
+round_to_even <- function(n) {
+  rounded <- round(n)
+  if (rounded %% 2 == 1) {  # if odd, make it even
+    if (n - floor(n) < 0.5) {
+      return(rounded - 1)  # round down
+    } else {
+      return(rounded + 1)  # or round up
+    }
+  } else {
+    return(rounded)
+  }
+}
+
+
+# function to generate custom tree ID based on UTM zone and coordinates
+generate_custom_id <- function(utm, geometry) {
+  coords <- st_coordinates(geometry)
+  x <- coords[, "X"]
+  y <- coords[, "Y"]
+  # Apply rounding to the nearest even integer
+  x_even <- round_to_even(x)
+  y_even <- round_to_even(y)
+  return(paste(utm, x_even, y_even, sep = "_"))
+}
+
+# to move file from one drive to another
+move_file_across_drives <- function(src, dst) {
+  # copy the file to the target location
+  copy_success <- file.copy(src, dst)
+  
+  # if the copy was successful, delete the original file
+  if (copy_success) {
+    remove_success <- file.remove(src)
+    
+    if (remove_success) {
+      cat("File moved successfully.\n")
+      return(TRUE)
+    } else {
+      cat("File copied but original could not be deleted.\n")
+      return(FALSE)
+    }
+  } else {
+    cat("File could not be copied.\n")
+    return(FALSE)
+  }
+}
+
+# ------------------------------------------------------------
 # paths that stay the same
 chm_dir = paste0(site_dir, '/', 'chm')
 if (!dir.exists(chm_dir)){
@@ -42,7 +98,7 @@ tiles <- list.files(path=laz_dir, pattern=pattern, full.names=TRUE)
 # run on each tile
 for (f in tiles) {
   # get basename
-  basename <- tools::file_path_sans_ext(basename(f))
+  base_name <- tools::file_path_sans_ext(basename(f))
 
   print('Reading points')
   las <- readLAS(
@@ -74,48 +130,55 @@ for (f in tiles) {
   w <- matrix(1, 3, 3)
   smoothed <- terra::focal(chm, w, fun=mean, na.rm=TRUE)
   
-  smooth_chm_path <- paste0(site_dir, '/chm', '/', basename, '.tif')
+  smooth_chm_path <- paste0(site_dir, '/chm', '/', base_name, '.tif')
   writeRaster(smoothed, smooth_chm_path, overwrite=TRUE)
   
   # find ttops with height dependent window size
   print( 'finding ttops...')
   
-  f <- function(x) {
+  wf <- function(x) {
     y <- abs(x/8)
     y[x <= 32] <- 4
     y[x > 80] <- 10
     return(y)
   }
-  ttops <- locate_trees(smoothed, lmf(f))
+  
+  ttops <- locate_trees(smoothed, lmf(wf))
+  #  replace treeID with unique treeID
+  ttops$uniqueID <- mapply(generate_custom_id, utm = utm_zone, geometry = ttops$geometry)
   
   # segment
   print('segmenting...')
   segs = segment_trees(
     normed,
-    dalponte2016(smoothed, ttops),
-    attribute='IDdalponte'
+    dalponte2016(smoothed, ttops)
   )
   
   print('crown metrics...')
   crowns <- crown_metrics(
-    segs,
-    func=.stdmetrics,
-    attribute='IDdalponte',
-    geom='concave'
+  segs,
+  func=.stdmetrics,
+  geom='concave'
   )
+  
+  crowns <- merge(
+    x=crowns,
+    y=st_drop_geometry(ttops)[, c("treeID", "uniqueID")],
+    by="treeID",
+    all.x=TRUE
+    )
   
   # filter out trees shorter than 5m
   crowns <- filter(crowns, zq95 >= 5)
   
-  
-#write vectors
+  #write vectors
   print('writing ttops')
   st_write(
     ttops,
     file.path(
       site_dir,
       'ttops',
-      paste0(basename, '.gpkg')
+      paste0(base_name, '.gpkg')
     )
   )
   
@@ -125,18 +188,33 @@ for (f in tiles) {
     file.path(
       site_dir,
       'crowns',
-      paste0(basename, '.gpkg')
+      paste0(base_name, '.gpkg')
     )
   )
 
-   print('writing segmented point cloud')
+  print('writing segmented point cloud to cold storage')
+  print(file.path(
+    cold_storage,
+    'retiled_lidar',
+    paste0(base_name, '.laz')
+  ))
+  
   writeLAS(
     segs,
     file.path(
-      segs_dir,
-      paste0(basename, '.laz')
+      cold_storage,
+      'retiled_lidar',
+      paste0(base_name, '.laz')
       )
   )
+
+  print('moving lidar tile to cold storage')
   
+  dst <- file.path(
+    cold_storage,
+    'segmented_lidar',
+    paste0(basename(f))
+  )
   
+  move_file_across_drives(f, dst)
 }
