@@ -8,6 +8,7 @@ import geopandas as gpd
 import numpy as np
 import optuna
 import pandas as pd
+rom sklearn.model_selection import train_test_split
 from tqdm import tqdm
 import xarray as xr
 import rioxarray
@@ -250,6 +251,10 @@ if __name__ == '__main__':
             break
 
     data = pd.concat(data)
+    
+    # save data so we don't have to re-run
+    
+    
     data['y'] = data.label.round().astype(int)
     train, test = train_test_split(data, test_size=0.2)
     

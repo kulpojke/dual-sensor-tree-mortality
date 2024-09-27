@@ -71,7 +71,7 @@ move_file_across_drives <- function(src, dst) {
 
 # ------------------------------------------------------------
 # paths that stay the same
-chm_dir = paste0(site_dir, '/', 'chm')
+F = paste0(site_dir, '/', 'chm')
 if (!dir.exists(chm_dir)){
   dir.create(chm_dir)
 }
