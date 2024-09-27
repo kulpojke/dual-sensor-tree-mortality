@@ -29,7 +29,7 @@ def parse_arguments():
     )
 
     parser.add_argument(
-        '--txt,
+        '--txt',
         type=str,
         required=True,
         help='path to output retile list'
@@ -44,14 +44,14 @@ def parse_arguments():
     )
 
     parser.add_argument(
-        '--grid_size,
+        '--grid_size',
         type=int,
         required=True,
         help='desired size of output tiles'
     )
 
     parser.add_argument(
-        '--buffer,
+        '--buffer',
         type=int,
         required=True,
         help='desired size of output tiles'
