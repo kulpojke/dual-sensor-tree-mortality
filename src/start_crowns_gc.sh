@@ -25,22 +25,12 @@ cat todo.list | parallel \
     --joblog gnu_parallel.log \
     -j 4 \
     gcloud storage cp gs://$BUCKET/{} {} && \
-    Rscript crown_delineation_restart.R {} $UTM_ZONE
+    Rscript crown_delineation_gc.R {} $UTM_ZONE && \
+    gcloud storage cp crowns/{.}_crowns.gpkg gs://$BUCKET && \
+    gcloud storage cp ttops/{.}_ttops.gpkg gs://$BUCKET && \
+    gcloud storage cp {.}_log.txt gs://$BUCKET
 
 
-BASENAME="${INPUT_FILE%.*}"
-CROWNS="${BASENAME}_crowns.gpkg"
-TTOPS="${BASENAME}_ttops.gpkg"
 
-
-# TODO:change R script to work on only 1 file, adjust outfile names
-# TODO: add log
-Rscript crown_delineation_restart.R /work /data /cold $utm_zone 
-
-# TODO: tries and error handlingfor this
-
-# just chuck em' in the bucket, do directories
-gcloud storage cp $CROWNS gs://$BUCKET
-gcloud storage cp $TTOPS gs://$BUCKET
 
 
