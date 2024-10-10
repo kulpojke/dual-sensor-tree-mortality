@@ -4,7 +4,6 @@
 # Called by start_crown_gc.sh
 
 import argparse
-from joblib import Parallel, compute
 
 
 def parse_arguments():
@@ -58,10 +57,13 @@ if __name__ == '__main__':
         done_list = [f.split('_')[0] for f in crowns]
 
 
-    todo = [l for l in laz if f not in l for f in done_list]
+    if len(done_list) > 0:
+        todo = [l for l in laz for f in done_list if f not in l]
+    else:
+        todo = done_list
 
     with open('todo.list', 'w') as dst:
-        todo.writelines(line + '\n' for line in todo)
+        dst.writelines(line + '\n' for line in todo)
 
 
 

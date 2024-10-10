@@ -14,7 +14,7 @@ gcloud storage ls gs://$BUCKET/*_ttops.gpkg >>  bucket_ttops.list
 gcloud storage ls gs://$BUCKET/*_crowns.gpkg >>  bucket_crowns.list
 
 # run the python script to compare lists
-python compare_file_lists.py \
+python3 compare_file_lists.py \
     --laz_list=bucket_laz.list \
     --ttops_list=bucket_ttops.list \
     --crowns_list=bucket_crowns.list
@@ -24,14 +24,14 @@ cat todo.list | parallel \
     --bar \
     --joblog crowns_log.txt \
     -j 4 \
-    gcloud storage cp gs://$BUCKET/{} {} && \
-    Rscript crown_delineation_gc.R {} $UTM_ZONE && \
-    gcloud storage cp crowns/{.}_crowns.gpkg gs://$BUCKET && \
-    gcloud storage cp ttops/{.}_ttops.gpkg gs://$BUCKET && \
-    gcloud storage cp {.}_log.txt gs://$BUCKET && \
-    rm {.}_log.txt && \
-    rm ttops/{.}_ttops.gpkg && \
-    rm crowns/{.}_crowns.gpkg
+    gcloud storage cp {} {/} && \
+    Rscript crown_delineation_gc.R {/} $UTM_ZONE && \
+    gcloud storage cp crowns/{/.}_crowns.gpkg gs://$BUCKET && \
+    gcloud storage cp ttops/{/.}_ttops.gpkg gs://$BUCKET && \
+    gcloud storage cp {/.}_log.txt gs://$BUCKET && \
+    rm {/.}_log.txt && \
+    rm ttops/{/.}_ttops.gpkg && \
+    rm crowns/{/.}_crowns.gpkg
 
 # when done relist the files
 rm bucket_laz.list

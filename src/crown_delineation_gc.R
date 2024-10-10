@@ -60,11 +60,11 @@ if (!dir.exists(crowns_dir)){
   dir.create(crowns_dir)
 }
 
-log_file <- paste0(base_name, '_log.txt')
 
 tryCatch({
   # get basename
   base_name <- tools::file_path_sans_ext(basename(f))
+  log_file <- paste0(base_name, '_log.txt')
 
   las <- readLAS(
     f,
