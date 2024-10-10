@@ -60,10 +60,10 @@ if __name__ == '__main__':
     if len(done_list) > 0:
         todo = [l for l in laz for f in done_list if f not in l]
     else:
-        todo = done_list
+        todo = laz
 
     with open('todo.list', 'w') as dst:
-        dst.writelines(line + '\n' for line in todo)
+        dst.writelines(todo)
 
 
 

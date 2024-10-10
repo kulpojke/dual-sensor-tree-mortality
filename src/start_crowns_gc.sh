@@ -20,18 +20,20 @@ python3 compare_file_lists.py \
     --crowns_list=bucket_crowns.list
 
 # above step writes a new file, todo.list
+export UTM_ZONE=$UTM_ZONE
+export BUCKET=$BUCKET
+
 cat todo.list | parallel \
     --bar \
     --joblog crowns_log.txt \
     -j 4 \
-    gcloud storage cp {} {/} && \
+    --env UTM_ZONE --env BUCKET \
+    'gcloud storage cp {} {/} && \
     Rscript crown_delineation_gc.R {/} $UTM_ZONE && \
     gcloud storage cp crowns/{/.}_crowns.gpkg gs://$BUCKET && \
     gcloud storage cp ttops/{/.}_ttops.gpkg gs://$BUCKET && \
     gcloud storage cp {/.}_log.txt gs://$BUCKET && \
-    rm {/.}_log.txt && \
-    rm ttops/{/.}_ttops.gpkg && \
-    rm crowns/{/.}_crowns.gpkg
+    rm {/.}_log.txt && ttops/{/.}_ttops.gpkg && crowns/{/.}_crowns.gpkg'
 
 # when done relist the files
 rm bucket_laz.list
