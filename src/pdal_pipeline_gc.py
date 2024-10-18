@@ -12,6 +12,7 @@
 #   so as to not unecessarilly redo existing tiles 
 # * make smooth_chm() more flexible and make --kernel arg
 #   to pass to it.
+#  * add --remove_local flag to remove local copies of files
 
 #%%
 import pdal
@@ -29,6 +30,7 @@ from datetime import datetime
 from ast import literal_eval
 
 from joblib import Parallel, delayed
+import textwrap
 
 
 # %%
@@ -49,27 +51,40 @@ def test_args():
 def parse_args():
     '''parses the arguments, returns args'''
     # init parser
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(
+        prog='pdal_pipeline_gc.py',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=textwrap.dedent('''\
+        Using contents of tile_grid.gpkg creates and excutes PDAL pipelines
+        that:
+            + download USGS tiles from urls, filtering noise and witheld
+              points
+            + merges and clips to new tile boundary
+            + writes and smoothes CHM
+            + writes normalized pc to laz
+            + uploads tiff and laz to gc bucket.    
+         ''')
+    )
 
     parser.add_argument(
         '--grid_gpkg',
         type=str,
         required=True,
-        help='path to (custom)tile index file'
+        help='path to(custom)tile index file [required]'
     )
 
     parser.add_argument(
         '--wrk_dir',
         type=str,
         required=True,
-        help='working directory'
+        help='working directory [required]'
     )
 
     parser.add_argument(
         '--bucket_name',
         type=str,
         required=True,
-        help='gc bucket name'
+        help='gc bucket name [required]'
     )
 
     parser.add_argument(
@@ -77,7 +92,7 @@ def parse_args():
         type=float,
         required=False,
         default=0.5,
-        help='resolution of chm'
+        help='resolution of chm [optional, default 0.5]'
     )
 
     parser.add_argument(
@@ -85,7 +100,7 @@ def parse_args():
         type=int,
         required=False,
         default=10,
-        help='jobs to run in parallel'
+        help='jobs to run in parallel [optional, default 10]'
     )
 
     args = parser.parse_args()
