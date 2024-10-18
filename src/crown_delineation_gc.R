@@ -6,6 +6,8 @@ laz <- args[1]
 tif <- args[2]
 utm_zone <- args[3]
 
+package.install(c('plyr', 'dplyr', 'terra', 'sf', 'liddR', 'future'))
+
 # libraries
 library(plyr)
 library(dplyr)

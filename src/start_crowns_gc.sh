@@ -15,7 +15,7 @@ BUCKET="$1"
 UTM_ZONE="$2"
 
 x=0
-function do_stuff() {
+function do_stuff {
     # make a list of the laz files in the bucket
     gcloud storage ls gs://$BUCKET/*.laz >>  bucket_laz.list
 
@@ -38,7 +38,7 @@ function do_stuff() {
     cat todo.list | parallel \
         --bar \
         --joblog crowns_log.txt \
-        -j 6 \
+        -j 2 \
         --env UTM_ZONE --env BUCKET \
         'gcloud storage cp {} {/} && \
         gcloud storage cp {.}.tiff {/.}.tiff && \
@@ -85,9 +85,13 @@ function do_stuff() {
                 do_stuff $LAZ_LINES
                 # reset tries
                 x=0
+            fi
         else
             echo "Finished: there seem to be new laz files, but have"  >> crowns_log.txt
             echo "tried calling self recursively 3 times." >> crowns_log.txt
+        fi
     fi
 }
+
+do_stuff 0
 
