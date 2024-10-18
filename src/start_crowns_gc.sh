@@ -1,5 +1,5 @@
 #!/bin/sh
-# usage:
+# usage: ./start_crowns_gc.sh chd-trintiy-bucket 10
 
 BUCKET="$1"
 UTM_ZONE="$2"
@@ -44,7 +44,7 @@ gcloud storage ls gs://$BUCKET/*.laz >>  bucket_laz.list
 gcloud storage ls gs://$BUCKET/*_ttops.gpkg >>  bucket_ttops.list
 gcloud storage ls gs://$BUCKET/*_crowns.gpkg >>  bucket_crowns.list
 
-python compare_file_lists.py \
+python3 compare_file_lists.py \
     --laz_list=bucket_laz.list \
     --ttops_list=bucket_ttops.list \
     --crowns_list=bucket_crowns.list

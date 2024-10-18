@@ -66,15 +66,18 @@ tryCatch({
   base_name <- tools::file_path_sans_ext(basename(f))
   log_file <- paste0(base_name, '_log.txt')
 
+  print('Readling laz...')
   las <- readLAS(
     f,
     filter='-drop_withheld',
     select='xyzirc'
     )
   
+  print('filtering laz...')
   las <- filter_duplicates(las)
   
   # send las_check to logfile
+  print('checkinging laz...')
   sink(log_file)
   las_check(las)
   sink()
