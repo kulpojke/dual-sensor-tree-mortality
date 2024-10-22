@@ -151,9 +151,11 @@ def execute_single_reader(usgs_tile, reader):
         if n > 0:
             message = f'{now()} DOWNLOD SUCCESS: {usgs_tile} with {n} points  '
             srs = pipe.metadata['metadata']['readers.las']['srs']['wkt']
+            arr = pipe.arrays[0]
         else:
             message = f'{now()} EMPTY TILE: {usgs_tile} downloaded with {n} points  '
         arr = pipe.arrays[0]
+        srs = None
 
     except Exception as e:
         n = -1
