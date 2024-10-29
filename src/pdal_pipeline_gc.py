@@ -1,10 +1,13 @@
 #!/bin/python
 
 # usage:
-# GPKG=/home/michael/Work/dual-sensor-tree-mortality/input_files/output/metadata/tile_grid.gpkg
+# GPKG=/home/michael/Work/dual-sensor-tree-mortality/input_files/tile_grid.gpkg
 # python3 src/pdal_pipeline_gc.py \
 # --grid_gpkg=$GPKG \
 # --wrk_dir=output \
+
+# optionally:
+# --chm=True
 # --bucket_name=chd-trintiy-bucket # yes, the bucket is mispelled!
 
 # TODO:
@@ -83,8 +86,9 @@ def parse_args():
     parser.add_argument(
         '--bucket_name',
         type=str,
-        required=True,
-        help='gc bucket name [required]'
+        required=False,
+        default=None,
+        help='gc bucket name if upload desired [optional]'
     )
 
     parser.add_argument(
@@ -103,11 +107,24 @@ def parse_args():
         help='jobs to run in parallel [optional, default 10]'
     )
 
+    parser.add_argument(
+        '--chm',
+        type=bool,
+        required=False,
+        default=False,
+        help='''
+        Bool - If True: normalize pc and make chm,
+            if False just write unnormalised pc.
+            [optional, default False]
+        '''
+    )
+
     args = parser.parse_args()
 
     # add aditional args
     args.wrk_dir = Path(args.wrk_dir)
-    args.tif_dir = str(args.wrk_dir / 'tif')
+    if args.chm:
+        args.tif_dir = str(args.wrk_dir / 'tif')
     args.laz_dir = str(args.wrk_dir / 'laz')
     args.log_dir = str(args.wrk_dir / 'log')
 
@@ -150,12 +167,10 @@ def execute_single_reader(usgs_tile, reader):
         n = pipe.execute()
         if n > 0:
             message = f'{now()} DOWNLOD SUCCESS: {usgs_tile} with {n} points  '
-            srs = pipe.metadata['metadata']['readers.las']['srs']['wkt']
-            arr = pipe.arrays[0]
         else:
             message = f'{now()} EMPTY TILE: {usgs_tile} downloaded with {n} points  '
         arr = pipe.arrays[0]
-        srs = None
+        srs = pipe.metadata['metadata']['readers.las']['srs']['wkt']
 
     except Exception as e:
         n = -1
@@ -352,87 +367,112 @@ def upload_to_gcs(bucket_name, src, dst):
     except Exception as e:
         LOG.append(f'{now()} UPLOAD FAILED: {e}')
 
+#%%
 
 # make args global, they will be used and modified by functions
 ARGS = parse_args()
 
 # ensure output dirs exist
-print(f'making {ARGS.laz_dir}, {ARGS.tif_dir}, {ARGS.log_dir}')
-_ = [
-    Path(x).mkdir(parents=True, exist_ok=True)
-    for x
-    in [ARGS.laz_dir, ARGS.tif_dir, ARGS.log_dir]
-    ]
+Path(ARGS.laz_dir).mkdir(parents=True, exist_ok=True)
+Path(ARGS.log_dir).mkdir(parents=True, exist_ok=True)
+if ARGS.chm:
+    Path(ARGS.tif_dir).mkdir(parents=True, exist_ok=True)
+    
+# see if files are already there (for restarts)
+if not ARGS.chm:
+    existing_files = [laz.stem for laz in Path(ARGS.laz_dir).glob('*.laz')]
+else:
+    existing_files = [
+        tiff.stem
+        for tiff
+        in Path(ARGS.tif_dir).glob('*.tiff')
+        if not tiff.stem.endswith('_')
+        ]
 
 grid = gpd.read_file(ARGS.grid_gpkg)
 grid['tiles'] = grid.tiles.apply(literal_eval)
 
 for _, row in tqdm(grid.iterrows(), total=len(grid)):
-    # get tile id
-    tile = row['name']
-    # start a log list and and tile id
-    LOG = [
-        '------------------------------------------  ',
-        f'# {tile}  '
-        ]
-   
-    # read points
-    readers = make_readers(row.tiles)
-    points = extract_results(execute_readers(readers), set_srs=True)
-    write_to_log()
+    try:
+        # get tile id
+        tile = row['name']
+        # start a log list and and tile id
+        LOG = [
+            '------------------------------------------  ',
+            f'# {tile}  '
+            ]
+    
+        # check existing to avoid rework
+        if tile in existing_files:
+            LOG.append(f'SKIPPING: {tile} has already been processed')
+            write_to_log()
+            continue
 
-    # hag nn filter points
-    hagged = extract_results(execute_hag_filters(points))
-    write_to_log()
-
-    # concat all the arrays
-    lumped = np.concatenate(hagged)
-    write_to_log()
-
-    # write chm
-    _ = extract_results(write_tif(lumped, tile))
-    with open(Path(ARGS.log_dir) / 'pipeline_log.txt', 'a') as dst:
-        _ = [dst.write(msg + '\n') for msg in LOG]
-
-    # smooth chm, only if it wrote without fail
-    if 'FAILED' not in LOG[-1]:
-        LOG.clear()
-        # paths
-        input_file = Path(ARGS.tif_dir) / f'{tile}_.tiff'
-        output_file = Path(ARGS.tif_dir) / f'{tile}.tiff'
-
-        # smooth chm
-        _ = extract_results(smooth_chm(input_file, output_file))
-        
-        # delete unsmoothed chm if it uploaded
-        if 'SMOOTHING SUCCESS' in LOG[-1]:
-            input_file.unlink()
-            
+        # read points
+        readers = make_readers(row.tiles)
+        points = extract_results(execute_readers(readers), set_srs=True)
         write_to_log()
 
-    LOG.clear()
-    # ferry HeightAboveGround to Z
-    lumped['Z'] = lumped['HeightAboveGround']
+        # if points is an empty list, write a log message and skip t onext iterr
+        if len(points) == 0:
+            LOG.append(
+                f'{now()} TILE FAILED: No points in any USGS tiles within {tile}.'
+                )
+            write_to_log()
+            continue
 
-    # write normalized pc
-    _ = extract_results(write_laz(lumped, tile))
-    write_to_log()
+        # if chm: hag nn filter points
+        if ARGS.chm:
+            points = extract_results(execute_hag_filters(points))
+            write_to_log()
 
-    # upload to bucket
-    src = Path(ARGS.tif_dir) / f'{tile}.tiff'
-    dst = f'{tile}.tiff' 
-    upload_to_gcs(ARGS.bucket_name, src, dst)
-    write_to_log()
+        # concat all the arrays
+        lumped = np.concatenate(points)
+        write_to_log()
 
-    src = Path(ARGS.laz_dir) / f'{tile}.laz'
-    dst = f'{tile}.laz' 
-    upload_to_gcs(ARGS.bucket_name, src, dst)
-    write_to_log()
+        # if chm: write chm
+        if ARGS.chm:
+            # write tiff
+            _ = extract_results(write_tif(lumped, tile))
+            input_file = Path(ARGS.tif_dir) / f'{tile}_.tiff'
 
-    # put spaces below block of message for tile
-    _ = [LOG.append(' ') for i in range(2)]
-    write_to_log()
-    
+            # smooth tiff
+            output_file = Path(ARGS.tif_dir) / f'{tile}.tiff'
+            _ = extract_results(smooth_chm(input_file, output_file))
+
+            # delete unsmoothed chm if smoothed succesfully
+            if 'SMOOTHING SUCCESS' in LOG[-1]:
+                input_file.unlink()
+            write_to_log()
+
+            # ferry HeightAboveGround to Z
+            lumped['Z'] = lumped['HeightAboveGround']
+
+        # write  pc
+        _ = extract_results(write_laz(lumped, tile))
+        write_to_log()
+
+        # upload to bucket
+        if ARGS.bucket_name is not None:
+            src = Path(ARGS.tif_dir) / f'{tile}.tiff'
+            dst = f'{tile}.tiff' 
+            upload_to_gcs(ARGS.bucket_name, src, dst)
+            write_to_log()
+
+            src = Path(ARGS.laz_dir) / f'{tile}.laz'
+            dst = f'{tile}.laz' 
+            upload_to_gcs(ARGS.bucket_name, src, dst)
+            write_to_log()
+        else:
+            LOG.append(f'{now()} SKIPPING UPLOAD: {tile} - no bucket name provided.')
+            write_to_log()
+
+        # put spaces below block of message for tile
+        _ = [LOG.append(' ') for i in range(2)]
+        write_to_log()
+    except Exception as e:
+         LOG.append(f'{now()} FAILED: unknown reason not caugth by error handling:  {e}')
+         write_to_log()
 #%%
 
         
