@@ -31,6 +31,7 @@ import argparse
 from pathlib import Path
 from datetime import datetime
 from ast import literal_eval
+from time import sleep
 
 from joblib import Parallel, delayed
 import textwrap
@@ -47,7 +48,7 @@ def test_args():
     args.wrk_dir=Path('../output')
     args.tif_dir = str(args.wrk_dir / 'tif')
     args.laz_dir = str(args.wrk_dir / 'laz')
-    args.log_dir = str(args.wrk_dir / 'log')    
+    args.log_dir = str(args.wrk_dir / 'log')
     return args
 
 
@@ -65,7 +66,11 @@ def parse_args():
             + merges and clips to new tile boundary
             + writes and smoothes CHM
             + writes normalized pc to laz
-            + uploads tiff and laz to gc bucket.    
+            + uploads tiff and laz to gc bucket (optional).
+
+        Skips files that already exist in laz_dir.  Assumes that if files
+        with the same stem name as tiles exist in a directory called 'crowns'
+        next to laz_dir, the tiles have already been processed and will be skipped.    
          ''')
     )
 
@@ -117,6 +122,16 @@ def parse_args():
             if False just write unnormalised pc.
             [optional, default False]
         '''
+    )
+
+    parser.add_argument(
+        '--slow_your_roll',
+        type=int,
+        required=False,
+        default=1000,
+        help='''int - if more than this many laz files are present,
+        wait for 30 minutes before processing next tile.
+        [optional, default 1000]'''
     )
 
     args = parser.parse_args()
@@ -389,6 +404,13 @@ else:
         if not tiff.stem.endswith('_')
         ]
 
+# also check the crown dir for file that were processed in R and deleted
+crown_dir = Path(ARGS.laz_dir).parent / 'crowns'
+existing_crowns = [cr.stem for cr in crown_dir.glob('*.gpkg')]
+
+# combine existig crowns with exiting laz
+existing_files = list(set(existing_files + existing_crowns))
+
 grid = gpd.read_file(ARGS.grid_gpkg)
 grid['tiles'] = grid.tiles.apply(literal_eval)
 
@@ -404,7 +426,7 @@ for _, row in tqdm(grid.iterrows(), total=len(grid)):
     
         # check existing to avoid rework
         if tile in existing_files:
-            LOG.append(f'SKIPPING: {tile} has already been processed')
+            LOG.append(f'{now()} SKIPPING: {tile} has already been processed')
             write_to_log()
             continue
 
@@ -473,6 +495,16 @@ for _, row in tqdm(grid.iterrows(), total=len(grid)):
     except Exception as e:
          LOG.append(f'{now()} FAILED: unknown reason not caugth by error handling:  {e}')
          write_to_log()
+
+    laz_count = len([laz for laz in Path(ARGS.laz_dir).glob('*.laz')])
+
+    # if more than ARGS.slow_your_roll laz files have piled up, sleep 30 min
+    if  laz_count >= ARGS.slow_your_roll:
+        message = f'{now} WAITING: {laz_count} laz files in laz_dir. Waiting 30 minutes.'
+        LOG.append(message)
+        write_to_log()
+        print(message)
+        sleep(30 * 60)
 #%%
 
         

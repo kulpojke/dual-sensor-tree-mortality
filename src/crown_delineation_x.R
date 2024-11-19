@@ -97,13 +97,14 @@ main <- function(complete) {
     # get basename
     base_name <- tools::file_path_sans_ext(basename(f))
 
-    # if file has already benn processed, skip it
+    # if file has already benn processed, delete laz
     if (base_name %in% complete) {
       add_to_log('-------------------------------------------')
-      add_to_log(paste(base_name, 'has already been processed. Skipping.'))
+      add_to_log(paste(base_name, 'has already been processed. Deleting laz and skipping.'))
       add_to_log(format(Sys.time(), '%Y-%m-%d %H:%M:%S'))
       add_to_log('-------------------------------------------')
       write_to_log(log_dir)
+      file.remove(f)
       next
 
       } else {
@@ -118,6 +119,7 @@ main <- function(complete) {
         print(LOG)
         write_to_log(log_dir)
 
+        # 
         print('Reading points')
         las <- readLAS(
           f,
@@ -127,7 +129,7 @@ main <- function(complete) {
         
         #filter duplicate points and check integrity
         las <- filter_duplicates(las)
-        print('las chaeck..')
+        print('las check..')
         las_check_output <- capture.output(las_check(las))
         add_to_log('blah blah')
         print('adding to log')
@@ -240,7 +242,7 @@ main <- function(complete) {
         )
         
         write_to_log(log_dir)
-      
+        file.remove(f)
 
       }, error = function(e) {
         add_to_log('- - - - - - - - - - - - - - - - - - - - - - -')
@@ -265,7 +267,7 @@ n_done <- length(complete)
 n_laz <- length(path_ext_remove(path_file(dir_ls(laz_dir, glob = "*.laz"))))
 
 while (i < 10) {
-  if (n_laz > n_done) {
+  if (n_laz > 0) {
     main(complete)
     complete <- path_ext_remove(path_file(dir_ls(crowns_dir, glob = "*.gpkg")))
     n_done <- length(complete)
